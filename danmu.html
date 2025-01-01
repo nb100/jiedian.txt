@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+    <title>Danmaku Display</title>
+    <script src="douyinHtml.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: transparent;
+            overflow: hidden;
+        }
+
+        #danmu-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            background-color: transparent;
+            color: white;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+    .danmu {
+            position: absolute;
+            white-space: nowrap;
+            color: red;
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="danmu-container"></div>
+    <script>
+        const danmuContainer = document.getElementById('danmu-container');
+        const urlParams = new URLSearchParams(window.location.search);
+        const ttwid = atob(urlParams.get('ttwid'));
+        const wss = atob(urlParams.get('wss'));
+        //console.log('ttwid的值:', ttwid);
+        //console.log('wss的值:', wss);
+      
+        const headers = {
+            'Cookie': ttwid,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        };
+        const socket = new WebSocket(wss, {
+        headers: headers
+        });
+
+        socket.onopen = function(event) {
+            console.log("WebSocket连接成功，当前时间"+new Date().Format("yyyy-MM-dd hh:mm:ss"));
+        };
+        
+        const maxRows = 5;
+        let currentRow = 0;
+        const rowHeight = 30;
+        const minDuration = 3; // 新增：最小动画持续时间，单位为秒
+
+        function moveDanmu(danmuElement, duration) {
+            const start = performance.now();
+            const startX = window.innerWidth;
+            const endX = -danmuElement.offsetWidth;
+            const interval = 1000 / 60; // 60fps
+            const move = () => {
+                const now = performance.now();
+                const elapsed = now - start;
+                if (elapsed < duration) {
+                    const progress = elapsed / duration;
+                    const x = startX - (startX - endX) * progress;
+                    danmuElement.style.left = x + 'px';
+                    requestAnimationFrame(move);
+                } else {
+                    danmuContainer.removeChild(danmuElement);
+                }
+            };
+            requestAnimationFrame(move);
+        }
+
+        socket.onmessage = function (event) {
+            
+            let pushframe = new proto.douyin.PushFrame.deserializeBinary(message);
+        let payload = pushframe.getPayload_asU8();
+        try {
+            const buffer = zlib.gunzipSync(payload);
+            let response = new proto.douyin.Response.deserializeBinary(buffer);
+            let res = response.toObject();
+            let frame = pushframe.toObject();
+            if (res.needack) {
+                let ack = new proto.douyin.PushFrame();
+                ack.setLogid(frame.logid);
+                ack.setPayloadtype('ack');
+                ack.setPayload(Buffer.from(res.internalext, 'utf-8'));
+                let data = ack.serializeBinary();
+                ws.send(data, {
+                    binary: true,
+                    mask: true
+                }, (err) => {
+                    if (err) {
+                        console.error('发送数据时出错:', err);
+                    } else {
+                        //console.log('数据发送成功');
+                    }
+                });
+
+            }
+            let messageslistList = response.getMessageslistList();
+            try {
+                for (let msg of messageslistList) {
+                    let method = msg.getMethod();
+                    if (method == 'WebcastChatMessage') {
+                        let payload = msg.getPayload_asU8();
+                        let chatmessage = new proto.douyin.ChatMessage.deserializeBinary(payload);
+                        let content = chatmessage.getContent();
+                        
+                        //代码位置①
+
+                    }
+                }
+            } catch (error) {
+               // console.error('message处理错误:', error);
+            }
+        } catch (error) {
+            console.error('解压失败:', error);
+        }
+        
+        
+        //后续修改弹幕变量，代码位置①
+            const danmu = JSON.parse(event.data);
+                const danmuElement = document.createElement('div');
+                danmuElement.textContent = danmu.text;
+                danmuElement.className = 'danmu';
+                danmuContainer.appendChild(danmuElement);
+
+                const y = currentRow * rowHeight;
+                danmuElement.style.top = y + 'px';
+
+                const textLength = danmu.text.length;
+                const baseSpeed = 0.2;
+                let animationDuration = textLength * baseSpeed;
+                if (animationDuration < minDuration) {
+                    animationDuration = minDuration;
+                }
+
+                moveDanmu(danmuElement, animationDuration * 1000);
+
+                // 循环设置行
+                currentRow = (currentRow + 1) % maxRows;
+        };
+        
+        socket.onclose = function(event) {
+            console.log('WebSocket服务已关闭.');
+            socket.close();
+        };
+        
+        socket.onerror = function (error) {
+            console.error('WebSocket error:', error);
+        };
+    </script>
+</body>
+</html>
